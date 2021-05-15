@@ -1,25 +1,31 @@
-import React, { Fragment, useEffect, useReducer, useState } from "react";
+import React, { Fragment, useReducer, useEffect, useState } from "react";
 import styled from "styled-components";
-import { Link } from "react-router-dom";
+import { useHistory, Link } from "react-router-dom";
 
+// components
 import { LocalMallIcon } from "../components/Icons";
-
 import { FoodWrapper } from "../components/FoodWrapper";
+import { NewOrderConfirmDialog } from "../components/NewOrderConfirmDialog";
 import Skeleton from "@material-ui/lab/Skeleton";
 
-import { FoodOrderDialog } from "../components/FoodOrderDialog";
-
+// reducers
 import {
   initialState as foodsInitialState,
   foodsActionTypes,
   foodsReducer,
 } from "../reducers/foods";
 
+// apis
 import { fetchFoods } from "../apis/foods";
+import { postLineFoods, replaceLineFoods } from "../apis/line_foods";
 
+// images
 import MainLogo from "../images/logo.png";
+import { FoodOrderDialog } from "../components/FoodOrderDialog";
 import FoodImage from "../images/food-image.jpg";
 
+// constants
+import { HTTP_STATUS_CODE } from "../constants";
 import { COLORS } from "../style_constants";
 import { REQUEST_STATE } from "../constants";
 
@@ -50,22 +56,20 @@ const FoodsList = styled.div`
 
 const ItemWrapper = styled.div`
   margin: 16px;
-  /* width: 32%; */
 `;
 
-const submitOrder = () => {
-  // 後ほど仮注文のAPIを実装します
-  console.log("登録ボタンが押された！");
-};
-
 export const Foods = ({ match }) => {
-  const [foodsState, dispatch] = useReducer(foodsReducer, foodsInitialState);
   const initialState = {
     isOpenOrderDialog: false,
     selectedFood: null,
     selectedFoodCount: 1,
+    isOpenNewOrderDialog: false,
+    existingResutaurautName: "",
+    newResutaurautName: "",
   };
   const [state, setState] = useState(initialState);
+  const [foodsState, dispatch] = useReducer(foodsReducer, foodsInitialState);
+  const history = useHistory();
 
   useEffect(() => {
     dispatch({ type: foodsActionTypes.FETCHING });
@@ -77,7 +81,37 @@ export const Foods = ({ match }) => {
         },
       });
     });
+    console.log(state, foodsState);
   }, []);
+
+  const submitOrder = () => {
+    postLineFoods({
+      foodId: state.selectedFood.id,
+      count: state.selectedFoodCount,
+    })
+      .then(() => history.push("/orders"))
+      .catch((e) => {
+        if (e.response.status === HTTP_STATUS_CODE.NOT_ACCEPTABLE) {
+          setState({
+            ...state,
+            isOpenOrderDialog: false,
+            isOpenNewOrderDialog: true,
+            existingResutaurautName: e.response.data.existing_restaurant,
+            newResutaurautName: e.response.data.new_restaurant,
+          });
+        } else {
+          throw e;
+        }
+      });
+  };
+
+  const replaceOrder = () => {
+    replaceLineFoods({
+      foodId: state.selectedFood.id,
+      count: state.selectedFoodCount,
+    }).then(() => history.push("/orders"));
+  };
+
   return (
     <Fragment>
       <HeaderWrapper>
@@ -107,8 +141,8 @@ export const Foods = ({ match }) => {
                 onClickFoodWrapper={(food) =>
                   setState({
                     ...state,
-                    isOpenOrderDialog: true,
                     selectedFood: food,
+                    isOpenOrderDialog: true,
                   })
                 }
                 imageUrl={FoodImage}
@@ -134,9 +168,7 @@ export const Foods = ({ match }) => {
               selectedFoodCount: state.selectedFoodCount - 1,
             })
           }
-          // 先ほど作った関数を渡します
           onClickOrder={() => submitOrder()}
-          // モーダルを閉じる時はすべてのstateを初期化する
           onClose={() =>
             setState({
               ...state,
@@ -145,6 +177,15 @@ export const Foods = ({ match }) => {
               selectedFoodCount: 1,
             })
           }
+        />
+      )}
+      {state.isOpenNewOrderDialog && (
+        <NewOrderConfirmDialog
+          isOpen={state.isOpenNewOrderDialog}
+          onClose={() => setState({ ...state, isOpenNewOrderDialog: false })}
+          existingResutaurautName={state.existingResutaurautName}
+          newResutaurautName={state.newResutaurautName}
+          onClickSubmit={() => replaceOrder()}
         />
       )}
     </Fragment>
